@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Умный помощник по скупке мякоти (v2)</title>
+  <title>Умный помощник по скупке мякоти (v3)</title>
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -32,6 +32,7 @@
       margin-top: 10px;
       border: 1px solid #ddd;
       border-radius: 6px;
+      cursor: crosshair;
     }
 
     .controls {
@@ -49,7 +50,6 @@
     }
     .btn-analyze { background-color: #1976d2; color: white; }
     .btn-clear { background-color: #ff9800; color: white; }
-    .btn-manual { background-color: #4caf50; color: white; }
 
     .results {
       margin-top: 20px;
@@ -74,27 +74,6 @@
     .item-total {
       font-weight: bold;
       color: #c62828;
-    }
-
-    .manual-mode {
-      margin-top: 20px;
-      padding: 15px;
-      background: white;
-      border-radius: 8px;
-      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
-      display: none;
-    }
-    .manual-row {
-      display: flex;
-      gap: 10px;
-      align-items: center;
-      margin-bottom: 10px;
-    }
-    .manual-select {
-      width: 150px;
-    }
-    .manual-qty {
-      width: 80px;
     }
 
     .report-section {
@@ -151,11 +130,18 @@
     .price-input {
       width: 80px;
     }
+
+    .highlight {
+      position: absolute;
+      border: 2px solid yellow;
+      pointer-events: none;
+      z-index: 1000;
+    }
   </style>
 </head>
 <body>
 
-  <h1>🤖 Умный помощник по скупке мякоти (v2)</h1>
+  <h1>🤖 Умный помощник по скупке мякоти (v3) — Ручной выбор ячеек</h1>
 
   <!-- Загрузка скриншота -->
   <div class="upload-section">
@@ -166,26 +152,13 @@
 
   <!-- Кнопки управления -->
   <div class="controls">
-    <button class="btn btn-analyze" onclick="analyzeImage()">🔍 Анализировать скриншот</button>
-    <button class="btn btn-manual" onclick="toggleManualMode()">➕ Ручной режим</button>
+    <button class="btn btn-analyze" onclick="startManualSelection()">🎯 Выбрать ячейку</button>
     <button class="btn btn-clear" onclick="clearResults()">Очистить результаты</button>
   </div>
 
   <!-- Результаты анализа -->
   <div class="results" id="analysisResults">
-    <p>Загрузите скриншот и нажмите «Анализировать».</p>
-  </div>
-
-  <!-- Ручной режим -->
-  <div class="manual-mode" id="manualMode">
-    <h3>➕ Ручной ввод</h3>
-    <div class="manual-row">
-      <select class="manual-select" id="manualItem">
-        <option value="">— Выбери предмет —</option>
-      </select>
-      <input type="number" class="manual-qty" id="manualQty" min="1" max="50" placeholder="Кол-во">
-      <button class="btn btn-save" onclick="addManualItem()">✅ Добавить</button>
-    </div>
+    <p>Загрузите скриншот и нажмите «Выбрать ячейку». Затем кликните по ячейке на изображении.</p>
   </div>
 
   <!-- Редактор цен -->
@@ -220,6 +193,8 @@
 
     // Загрузка скриншота
     let currentImage = null;
+    let isSelecting = false;
+    let highlightDiv = null;
 
     function loadScreenshot() {
       const input = document.getElementById('screenshotUpload');
@@ -231,210 +206,183 @@
           preview.src = e.target.result;
           preview.style.display = 'block';
           currentImage = e.target.result;
+          // Добавляем обработчик кликов
+          preview.onclick = handleImageClick;
         };
         reader.readAsDataURL(input.files[0]);
       }
     }
 
-    // Переключение ручного режима
-    function toggleManualMode() {
-      const manualDiv = document.getElementById('manualMode');
-      manualDiv.style.display = manualDiv.style.display === 'none' ? 'block' : 'none';
-
-      // Заполняем выпадающий список
-      const select = document.getElementById('manualItem');
-      select.innerHTML = '<option value="">— Выбери предмет —</option>';
-      meatItems.forEach(item => {
-        select.innerHTML += `<option value="${item.id}">${item.name}</option>`;
-      });
+    // Начало ручного выбора
+    function startManualSelection() {
+      if (!currentImage) {
+        alert("Сначала загрузите скриншот!");
+        return;
+      }
+      isSelecting = true;
+      document.getElementById('analysisResults').innerHTML = '<p>Кликните по ячейке на изображении.</p>';
+      createHighlight();
     }
 
-    // Добавление вручную
-    function addManualItem() {
-      const itemId = parseInt(document.getElementById('manualItem').value);
-      const qty = parseInt(document.getElementById('manualQty').value);
+    // Создание выделения
+    function createHighlight() {
+      if (highlightDiv) highlightDiv.remove();
+      highlightDiv = document.createElement('div');
+      highlightDiv.className = 'highlight';
+      document.body.appendChild(highlightDiv);
+    }
 
-      if (!itemId || qty < 1) {
-        alert("Выберите предмет и укажите количество.");
+    // Обработка клика по изображению
+    function handleImageClick(event) {
+      if (!isSelecting) return;
+
+      const img = event.target;
+      const rect = img.getBoundingClientRect();
+      const x = event.clientX - rect.left;
+      const y = event.clientY - rect.top;
+
+      // Размер ячейки (примерно)
+      const cellWidth = img.width / 5;
+      const cellHeight = img.height / 4;
+
+      // Центр ячейки
+      const centerX = Math.floor(x / cellWidth) * cellWidth + cellWidth / 2;
+      const centerY = Math.floor(y / cellHeight) * cellHeight + cellHeight / 2;
+
+      // Правый верхний угол для OCR
+      const textX = Math.floor(x / cellWidth) * cellWidth + cellWidth - 30;
+      const textY = Math.floor(y / cellHeight) * cellHeight + 5;
+
+      // Обновляем выделение
+      highlightDiv.style.left = `${rect.left + Math.floor(x / cellWidth) * cellWidth}px`;
+      highlightDiv.style.top = `${rect.top + Math.floor(y / cellHeight) * cellHeight}px`;
+      highlightDiv.style.width = `${cellWidth}px`;
+      highlightDiv.style.height = `${cellHeight}px`;
+
+      // Получаем цвет в центре
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      canvas.width = img.width;
+      canvas.height = img.height;
+      ctx.drawImage(img, 0, 0);
+
+      const pixelData = ctx.getImageData(centerX, centerY, 1, 1).data;
+      const [r, g, b] = pixelData;
+
+      // Определяем цвет по минимальному расстоянию
+      let closestItem = null;
+      let minDistance = Infinity;
+
+      meatItems.forEach(item => {
+        const [cr, cg, cb] = item.color;
+        const distance = Math.sqrt((r - cr) ** 2 + (g - cg) ** 2 + (b - cb) ** 2);
+        if (distance < minDistance) {
+          minDistance = distance;
+          closestItem = item;
+        }
+      });
+
+      // Если расстояние слишком большое — не определяем
+      if (minDistance > 150) {
+        document.getElementById('analysisResults').innerHTML = '<p>Не удалось определить цвет. Попробуйте другую ячейку.</p>';
         return;
       }
 
-      const item = meatItems.find(i => i.id === itemId);
-      const total = item.price * qty;
+      // Распознаём текст в правом верхнем углу
+      const textWidth = 30;
+      const textHeight = 20;
 
+      const textCanvas = document.createElement('canvas');
+      textCanvas.width = textWidth;
+      textCanvas.height = textHeight;
+      const textCtx = textCanvas.getContext('2d');
+      textCtx.drawImage(canvas, textX, textY, textWidth, textHeight, 0, 0, textWidth, textHeight);
+
+      // Преобразуем в чёрно-белое с высоким контрастом
+      const imageData = textCtx.getImageData(0, 0, textWidth, textHeight);
+      for (let i = 0; i < imageData.data.length; i += 4) {
+        const avg = (imageData.data[i] + imageData.data[i+1] + imageData.data[i+2]) / 3;
+        imageData.data[i] = avg > 128 ? 255 : 0;
+        imageData.data[i+1] = avg > 128 ? 255 : 0;
+        imageData.data[i+2] = avg > 128 ? 255 : 0;
+        imageData.data[i+3] = 255;
+      }
+      textCtx.putImageData(imageData, 0, 0);
+
+      // Увеличиваем изображение для лучшего OCR
+      const scale = 2;
+      const scaledCanvas = document.createElement('canvas');
+      scaledCanvas.width = textWidth * scale;
+      scaledCanvas.height = textHeight * scale;
+      const scaledCtx = scaledCanvas.getContext('2d');
+      scaledCtx.imageSmoothingEnabled = false;
+      scaledCtx.drawImage(textCanvas, 0, 0, textWidth, textHeight, 0, 0, scaledCanvas.width, scaledCanvas.height);
+
+      // Распознаём текст
+      Tesseract.recognize(
+        scaledCanvas.toDataURL(),
+        'eng',
+        { logger: m => {}, tessedit_char_whitelist: '0123456789xX' }
+      ).then(result => {
+        const text = result.data.text.trim().replace(/[^0-9xX]/gi, '');
+        const qtyMatch = text.match(/(\d+)x/i);
+        const quantity = qtyMatch ? parseInt(qtyMatch[1]) : 1;
+
+        if (quantity >= 1 && quantity <= 50) {
+          const total = closestItem.price * quantity;
+          const item = {
+            name: closestItem.name,
+            price: closestItem.price,
+            quantity,
+            total,
+            x: Math.round(textX),
+            y: Math.round(textY)
+          };
+
+          // Отображаем результат
+          const resultsDiv = document.getElementById('analysisResults');
+          let html = `
+            <h3>Распознано:</h3>
+            <div class="result-item">
+              <span class="item-name">${item.name}</span>
+              <span class="item-qty">×${item.quantity}</span>
+              <span class="item-total">${item.total} r</span>
+            </div>
+            <button class="btn btn-save" onclick="saveSingleItem(${JSON.stringify(item)})">✅ Добавить в отчёт</button>
+            <button class="btn btn-analyze" onclick="startManualSelection()">🎯 Выбрать ещё ячейку</button>
+          `;
+          resultsDiv.innerHTML = html;
+        } else {
+          document.getElementById('analysisResults').innerHTML = '<p>Не удалось распознать количество. Попробуйте другую ячейку.</p>';
+        }
+      }).catch(error => {
+        document.getElementById('analysisResults').innerHTML = `<p style="color:red;">Ошибка OCR: ${error.message}</p>`;
+      });
+
+      isSelecting = false;
+    }
+
+    // Сохранение одного предмета
+    function saveSingleItem(item) {
       purchases.push({
         name: item.name,
         price: item.price,
-        quantity: qty,
-        total,
+        quantity: item.quantity,
+        total: item.total,
         date: new Date().toISOString().split('T')[0],
         timestamp: new Date().toISOString()
       });
 
       localStorage.setItem('meatPurchases', JSON.stringify(purchases));
       renderReport();
-      document.getElementById('manualQty').value = '';
-      alert(`Добавлено: ${item.name} ×${qty}`);
-    }
-
-    // Анализ изображения
-    async function analyzeImage() {
-      if (!currentImage) {
-        alert("Сначала загрузите скриншот!");
-        return;
-      }
-
-      const resultsDiv = document.getElementById('analysisResults');
-      resultsDiv.innerHTML = '<p>Анализируем... Это может занять несколько секунд.</p>';
-
-      try {
-        // Создаём временный canvas для обработки
-        const img = new Image();
-        img.src = currentImage;
-        await new Promise(resolve => img.onload = resolve);
-
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
-        canvas.width = img.width;
-        canvas.height = img.height;
-        ctx.drawImage(img, 0, 0);
-
-        // Предположим, что ячейки расположены в сетке 5x4 (как на скриншоте)
-        const rows = 4;
-        const cols = 5;
-        const cellWidth = img.width / cols;
-        const cellHeight = img.height / rows;
-
-        let detectedItems = [];
-
-        for (let row = 0; row < rows; row++) {
-          for (let col = 0; col < cols; col++) {
-            const x = col * cellWidth;
-            const y = row * cellHeight;
-
-            // Получаем цвет в центре ячейки
-            const centerX = x + cellWidth / 2;
-            const centerY = y + cellHeight / 2;
-            const pixelData = ctx.getImageData(centerX, centerY, 1, 1).data;
-            const [r, g, b] = pixelData;
-
-            // Определяем цвет по минимальному расстоянию в RGB
-            let closestItem = null;
-            let minDistance = Infinity;
-
-            meatItems.forEach(item => {
-              const [cr, cg, cb] = item.color;
-              const distance = Math.sqrt((r - cr) ** 2 + (g - cg) ** 2 + (b - cb) ** 2);
-              if (distance < minDistance) {
-                minDistance = distance;
-                closestItem = item;
-              }
-            });
-
-            // Если расстояние меньше порога — считаем, что это наш цвет
-            if (minDistance > 100) continue; // Порог — можно настроить
-
-            // Распознаём текст в правом верхнем углу ячейки
-            const textX = x + cellWidth - 30;
-            const textY = y + 5;
-            const textWidth = 30;
-            const textHeight = 20;
-
-            const textCanvas = document.createElement('canvas');
-            textCanvas.width = textWidth;
-            textCanvas.height = textHeight;
-            const textCtx = textCanvas.getContext('2d');
-            textCtx.drawImage(canvas, textX, textY, textWidth, textHeight, 0, 0, textWidth, textHeight);
-
-            // Преобразуем в чёрно-белое с высоким контрастом
-            const imageData = textCtx.getImageData(0, 0, textWidth, textHeight);
-            for (let i = 0; i < imageData.data.length; i += 4) {
-              const avg = (imageData.data[i] + imageData.data[i+1] + imageData.data[i+2]) / 3;
-              imageData.data[i] = avg > 128 ? 255 : 0;
-              imageData.data[i+1] = avg > 128 ? 255 : 0;
-              imageData.data[i+2] = avg > 128 ? 255 : 0;
-              imageData.data[i+3] = 255; // Полная непрозрачность
-            }
-            textCtx.putImageData(imageData, 0, 0);
-
-            // Увеличиваем изображение для лучшего OCR
-            const scale = 2;
-            const scaledCanvas = document.createElement('canvas');
-            scaledCanvas.width = textWidth * scale;
-            scaledCanvas.height = textHeight * scale;
-            const scaledCtx = scaledCanvas.getContext('2d');
-            scaledCtx.imageSmoothingEnabled = false;
-            scaledCtx.drawImage(textCanvas, 0, 0, textWidth, textHeight, 0, 0, scaledCanvas.width, scaledCanvas.height);
-
-            // Распознаём текст
-            const textResult = await Tesseract.recognize(
-              scaledCanvas.toDataURL(),
-              'eng',
-              { logger: m => {}, tessedit_char_whitelist: '0123456789xX' }
-            );
-
-            const text = textResult.data.text.trim().replace(/[^0-9xX]/gi, '');
-            const qtyMatch = text.match(/(\d+)x/i);
-            const quantity = qtyMatch ? parseInt(qtyMatch[1]) : 1;
-
-            if (quantity >= 1 && quantity <= 50) {
-              const total = closestItem.price * quantity;
-              detectedItems.push({
-                name: closestItem.name,
-                price: closestItem.price,
-                quantity,
-                total,
-                x: Math.round(x),
-                y: Math.round(y)
-              });
-            }
-          }
-        }
-
-        // Отображаем результаты
-        if (detectedItems.length === 0) {
-          resultsDiv.innerHTML = '<p>Не удалось распознать ни одной мякоти. Попробуйте ручной режим.</p>';
-        } else {
-          let html = '<h3>Распознано:</h3>';
-          detectedItems.forEach(item => {
-            html += `
-              <div class="result-item">
-                <span class="item-name">${item.name}</span>
-                <span class="item-qty">×${item.quantity}</span>
-                <span class="item-total">${item.total} r</span>
-              </div>
-            `;
-          });
-          html += `<button class="btn btn-save" onclick="saveDetectedItems(${JSON.stringify(detectedItems)})">✅ Добавить все в отчёт</button>`;
-          resultsDiv.innerHTML = html;
-        }
-
-      } catch (error) {
-        resultsDiv.innerHTML = `<p style="color:red;">Ошибка: ${error.message}</p>`;
-      }
-    }
-
-    // Сохранение всех распознанных предметов
-    function saveDetectedItems(items) {
-      items.forEach(item => {
-        purchases.push({
-          name: item.name,
-          price: item.price,
-          quantity: item.quantity,
-          total: item.total,
-          date: new Date().toISOString().split('T')[0],
-          timestamp: new Date().toISOString()
-        });
-      });
-
-      localStorage.setItem('meatPurchases', JSON.stringify(purchases));
-      renderReport();
-      alert(`Добавлено ${items.length} предметов в отчёт.`);
+      document.getElementById('analysisResults').innerHTML = '<p>Добавлено в отчёт. Нажмите «Выбрать ещё ячейку», чтобы продолжить.</p>';
     }
 
     // Очистка результатов
     function clearResults() {
-      document.getElementById('analysisResults').innerHTML = '<p>Загрузите скриншот и нажмите «Анализировать».</p>';
+      document.getElementById('analysisResults').innerHTML = '<p>Загрузите скриншот и нажмите «Выбрать ячейку».</p>';
+      if (highlightDiv) highlightDiv.remove();
+      isSelecting = false;
     }
 
     // Редактор цен
