@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Умный помощник по скупке мякоти (v6)</title>
+  <title>Авто-помощник по скупке мякоти</title>
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -32,7 +32,6 @@
       margin-top: 10px;
       border: 1px solid #ddd;
       border-radius: 6px;
-      cursor: crosshair;
     }
 
     .controls {
@@ -76,41 +75,6 @@
       color: #c62828;
     }
 
-    .report-section {
-      margin-top: 25px;
-      background: white;
-      padding: 15px;
-      border-radius: 6px;
-      border: 1px solid #ddd;
-    }
-    .period-header {
-      font-size: 1.1em;
-      margin: 12px 0 8px;
-      padding-bottom: 5px;
-      border-bottom: 1px solid #eee;
-    }
-    .summary {
-      margin-top: 8px;
-      font-weight: bold;
-    }
-    .item {
-      font-size: 0.92em;
-      padding: 4px 0;
-      color: #555;
-    }
-    .buy-item { color: #2e7d32; }
-
-    .clear-all-btn {
-      background-color: #f44336;
-      color: white;
-      width: 100%;
-      padding: 10px;
-      border: none;
-      border-radius: 4px;
-      cursor: pointer;
-      margin-top: 15px;
-    }
-
     .price-editor {
       margin-top: 20px;
       padding: 15px;
@@ -131,120 +95,110 @@
       width: 80px;
     }
 
-    .highlight {
-      position: absolute;
-      width: 6px;
-      height: 6px;
-      background-color: yellow;
-      border: 1px solid red;
-      border-radius: 50%;
-      pointer-events: none;
-      z-index: 1000;
-      transform: translate(-50%, -50%);
+    .report-section {
+      margin-top: 25px;
+      background: white;
+      padding: 15px;
+      border-radius: 6px;
+      border: 1px solid #ddd;
+    }
+    .clear-all-btn {
+      background-color: #f44336;
+      color: white;
+      width: 100%;
+      padding: 10px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      margin-top: 15px;
     }
   </style>
 </head>
 <body>
 
-  <h1>🤖 Умный помощник по скупке мякоти (v6) — По цветам</h1>
+  <h1>🤖 Автоматический помощник по скупке мякоти</h1>
 
-  <!-- Загрузка скриншота -->
   <div class="upload-section">
     <label for="screenshotUpload" class="upload-btn">Загрузить скриншот</label>
     <input type="file" id="screenshotUpload" accept="image/*" style="display:none;" onchange="loadScreenshot()">
-    <img id="screenshotPreview" class="preview-img" src="" alt="Превью скриншота" style="display:none;">
+    <img id="screenshotPreview" class="preview-img" src="" alt="Превью" style="display:none;">
   </div>
 
-  <!-- Кнопки управления -->
   <div class="controls">
-    <button class="btn btn-analyze" onclick="startManualSelection()">🎯 Выбрать точку</button>
-    <button class="btn btn-clear" onclick="clearResults()">Очистить результаты</button>
+    <button class="btn btn-analyze" onclick="analyzeScreenshot()">🔍 Проанализировать всё</button>
   </div>
 
-  <!-- Результаты анализа -->
-  <div class="results" id="analysisResults">
-    <p>Загрузите скриншот и нажмите «Выбрать точку». Затем кликните по иконке мякоти.</p>
+  <div class="results" id="resultsContainer">
+    <p>Загрузите скриншот и нажмите «Проанализировать всё».</p>
   </div>
 
-  <!-- Редактор цен -->
   <div class="price-editor">
-    <h3>✏️ Настрой цены</h3>
-    <div id="priceEditorContainer"></div>
-    <button class="btn btn-edit" onclick="savePrices()">Сохранить цены</button>
+    <h3>✏️ Установите цены (один раз)</h3>
+    <div id="priceEditor"></div>
+    <button class="btn btn-clear" onclick="savePrices()">Сохранить цены</button>
   </div>
 
-  <!-- Отчёт -->
   <div class="report-section">
-    <h2>📊 История покупок</h2>
-    <div id="reportsContainer"></div>
+    <h2>📊 История</h2>
+    <div id="reportContainer"></div>
   </div>
 
-  <button class="clear-all-btn" onclick="clearAllData()">Очистить ВСЕ данные</button>
+  <button class="clear-all-btn" onclick="clearAll()">Очистить историю</button>
 
-  <!-- Подключаем Tesseract.js -->
   <script src="https://unpkg.com/tesseract.js@v2.1.5/dist/tesseract.min.js"></script>
 
   <script>
-    // База предметов — только название, цена и цветовой тип
-    let itemsConfig = [
-      { id: 1, name: "Мякоть куборбуза", price: 150, colorType: 'red' },
-      { id: 2, name: "Мякоть сластены", price: 120, colorType: 'blue' },
-      { id: 3, name: "Мякоть лимонника", price: 80, colorType: 'yellow' },
-      { id: 4, name: "Мякоть солевика", price: 100, colorType: 'white' }
-    ];
+    // Настройки: 5 колонок, 4 ряда
+    const COLS = 5;
+    const ROWS = 4;
 
-    let purchases = JSON.parse(localStorage.getItem('meatPurchases')) || [];
+    // База предметов
+    let prices = {
+      red: 150,
+      blue: 120,
+      yellow: 80,
+      white: 100
+    };
+
+    let history = JSON.parse(localStorage.getItem('meatHistory')) || [];
 
     let currentImage = null;
-    let isSelecting = false;
-    let highlightDiv = null;
 
+    // Загрузка изображения
     function loadScreenshot() {
-      const input = document.getElementById('screenshotUpload');
-      const preview = document.getElementById('screenshotPreview');
-      if (input.files && input.files[0]) {
-        const reader = new FileReader();
-        reader.onload = function(e) {
-          preview.src = e.target.result;
-          preview.style.display = 'block';
-          currentImage = e.target.result;
-          preview.onclick = handleImageClick;
-        };
-        reader.readAsDataURL(input.files[0]);
-      }
+      const file = document.getElementById('screenshotUpload').files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = e => {
+        document.getElementById('screenshotPreview').src = e.target.result;
+        document.getElementById('screenshotPreview').style.display = 'block';
+        currentImage = e.target.result;
+      };
+      reader.readAsDataURL(file);
     }
 
-    function startManualSelection() {
-      if (!currentImage) {
-        alert("Сначала загрузите скриншот!");
-        return;
-      }
-      isSelecting = true;
-      document.getElementById('analysisResults').innerHTML = '<p>Кликните по иконке мякоти на изображении.</p>';
-    }
-
-    // Определяем тип цвета по RGB
+    // Определение цвета
     function getColorType(r, g, b) {
-      // Красный: R высокий, G и B низкие
       if (r > 180 && g < 120 && b < 120) return 'red';
-      // Синий: B высокий, R и G низкие
       if (b > 180 && r < 120 && g < 120) return 'blue';
-      // Жёлтый: R и G высокие, B низкий
       if (r > 180 && g > 180 && b < 120) return 'yellow';
-      // Белый: все компоненты высокие
       if (r > 200 && g > 200 && b > 200) return 'white';
       return null;
     }
 
-    function handleImageClick(event) {
-      if (!isSelecting) return;
+    // Анализ всего скриншота
+    async function analyzeScreenshot() {
+      if (!currentImage) {
+        alert("Сначала загрузите скриншот!");
+        return;
+      }
 
-      const img = event.target;
-      const rect = img.getBoundingClientRect();
-      const x = event.clientX - rect.left;
-      const y = event.clientY - rect.top;
+      const resultsDiv = document.getElementById('resultsContainer');
+      resultsDiv.innerHTML = '<p>Анализируем... Это займёт 10–30 секунд.</p>';
 
-      createHighlight(event.clientX, event.clientY);
+      const img = new Image();
+      img.src = currentImage;
+      await new Promise(resolve => img.onload = resolve);
 
       const canvas = document.createElement('canvas');
       const ctx = canvas.getContext('2d');
@@ -252,187 +206,170 @@
       canvas.height = img.height;
       ctx.drawImage(img, 0, 0);
 
-      const pixelData = ctx.getImageData(x, y, 1, 1).data;
-      const [r, g, b] = pixelData;
+      const cellW = img.width / COLS;
+      const cellH = img.height / ROWS;
 
-      const colorType = getColorType(r, g, b);
-      const matchedItem = itemsConfig.find(item => item.colorType === colorType);
+      let allItems = [];
 
-      if (!matchedItem) {
-        document.getElementById('analysisResults').innerHTML = `
-          <p>Цвет (${r}, ${g}, ${b}) не соответствует ни одному типу мякоти.</p>
-          <p>Подсказка: убедитесь, что кликаете по центру иконки (не по тени или границе).</p>
-        `;
-        isSelecting = false;
-        return;
-      }
+      for (let row = 0; row < ROWS; row++) {
+        for (let col = 0; col < COLS; col++) {
+          // Центр ячейки — для цвета
+          const cx = col * cellW + cellW / 2;
+          const cy = row * cellH + cellH / 2;
+          const pixel = ctx.getImageData(cx, cy, 1, 1).data;
+          const colorType = getColorType(pixel[0], pixel[1], pixel[2]);
+          if (!colorType) continue;
 
-      // OCR для количества
-      const cellWidth = img.width / 5;
-      const cellHeight = img.height / 4;
-      const cellX = Math.floor(x / cellWidth) * cellWidth;
-      const cellY = Math.floor(y / cellHeight) * cellHeight;
+          // Правый верхний угол — для OCR
+          const tx = col * cellW + cellW - 30;
+          const ty = row * cellH + 5;
+          const tw = 30;
+          const th = 20;
 
-      const textX = cellX + cellWidth - 30;
-      const textY = cellY + 5;
-      const textWidth = 30;
-      const textHeight = 20;
+          const textCanvas = document.createElement('canvas');
+          textCanvas.width = tw;
+          textCanvas.height = th;
+          const textCtx = textCanvas.getContext('2d');
+          textCtx.drawImage(canvas, tx, ty, tw, th, 0, 0, tw, th);
 
-      const textCanvas = document.createElement('canvas');
-      textCanvas.width = textWidth;
-      textCanvas.height = textHeight;
-      const textCtx = textCanvas.getContext('2d');
-      textCtx.drawImage(canvas, textX, textY, textWidth, textHeight, 0, 0, textWidth, textHeight);
+          // Ч/б + контраст
+          const imgData = textCtx.getImageData(0, 0, tw, th);
+          for (let i = 0; i < imgData.data.length; i += 4) {
+            const avg = (imgData.data[i] + imgData.data[i+1] + imgData.data[i+2]) / 3;
+            imgData.data[i] = avg > 128 ? 255 : 0;
+            imgData.data[i+1] = avg > 128 ? 255 : 0;
+            imgData.data[i+2] = avg > 128 ? 255 : 0;
+          }
+          textCtx.putImageData(imgData, 0, 0);
 
-      // Ч/б + контраст
-      const imageData = textCtx.getImageData(0, 0, textWidth, textHeight);
-      for (let i = 0; i < imageData.data.length; i += 4) {
-        const avg = (imageData.data[i] + imageData.data[i+1] + imageData.data[i+2]) / 3;
-        imageData.data[i] = avg > 128 ? 255 : 0;
-        imageData.data[i+1] = avg > 128 ? 255 : 0;
-        imageData.data[i+2] = avg > 128 ? 255 : 0;
-        imageData.data[i+3] = 255;
-      }
-      textCtx.putImageData(imageData, 0, 0);
+          // Увеличение
+          const scale = 2;
+          const bigCanvas = document.createElement('canvas');
+          bigCanvas.width = tw * scale;
+          bigCanvas.height = th * scale;
+          const bigCtx = bigCanvas.getContext('2d');
+          bigCtx.imageSmoothingEnabled = false;
+          bigCtx.drawImage(textCanvas, 0, 0, tw, th, 0, 0, bigCanvas.width, bigCanvas.height);
 
-      // Увеличение для OCR
-      const scale = 2;
-      const scaledCanvas = document.createElement('canvas');
-      scaledCanvas.width = textWidth * scale;
-      scaledCanvas.height = textHeight * scale;
-      const scaledCtx = scaledCanvas.getContext('2d');
-      scaledCtx.imageSmoothingEnabled = false;
-      scaledCtx.drawImage(textCanvas, 0, 0, textWidth, textHeight, 0, 0, scaledCanvas.width, scaledCanvas.height);
+          try {
+            const result = await Tesseract.recognize(
+              bigCanvas.toDataURL(),
+              'eng',
+              { logger: m => {}, tessedit_char_whitelist: '0123456789xX' }
+            );
+            const text = result.data.text.trim().replace(/[^0-9xX]/g, '');
+            const match = text.match(/(\d+)x/i);
+            const qty = match ? parseInt(match[1]) : 1;
 
-      Tesseract.recognize(
-        scaledCanvas.toDataURL(),
-        'eng',
-        { logger: m => {}, tessedit_char_whitelist: '0123456789xX' }
-      ).then(result => {
-        const text = result.data.text.trim().replace(/[^0-9xX]/gi, '');
-        const qtyMatch = text.match(/(\d+)x/i);
-        const quantity = qtyMatch ? parseInt(qtyMatch[1]) : 1;
-
-        if (quantity >= 1 && quantity <= 50) {
-          const total = matchedItem.price * quantity;
-          const item = {
-            name: matchedItem.name,
-            price: matchedItem.price,
-            quantity,
-            total,
-            x: Math.round(x),
-            y: Math.round(y)
-          };
-
-          const resultsDiv = document.getElementById('analysisResults');
-          let html = `
-            <h3>Распознано:</h3>
-            <div class="result-item">
-              <span class="item-name">${item.name}</span>
-              <span class="item-qty">×${item.quantity}</span>
-              <span class="item-total">${item.total} r</span>
-            </div>
-            <button class="btn btn-save" onclick="saveSingleItem(${JSON.stringify(item)})">✅ Добавить в отчёт</button>
-            <button class="btn btn-analyze" onclick="startManualSelection()">🎯 Выбрать ещё точку</button>
-          `;
-          resultsDiv.innerHTML = html;
-        } else {
-          document.getElementById('analysisResults').innerHTML = `<p>Не удалось распознать количество. Текст: "${text}".</p>`;
+            if (qty >= 1 && qty <= 50) {
+              const itemName = {
+                red: "Мякоть куборбуза",
+                blue: "Мякоть сластены",
+                yellow: "Мякоть лимонника",
+                white: "Мякоть солевика"
+              }[colorType];
+              const total = prices[colorType] * qty;
+              allItems.push({ name: itemName, qty, total, color: colorType });
+            }
+          } catch (e) {
+            console.warn("OCR error in cell", row, col);
+          }
         }
-        isSelecting = false;
-      }).catch(error => {
-        document.getElementById('analysisResults').innerHTML = `<p style="color:red;">Ошибка OCR: ${error.message}</p>`;
-        isSelecting = false;
-      });
+      }
+
+      if (allItems.length === 0) {
+        resultsDiv.innerHTML = '<p>Ничего не найдено. Убедитесь, что скриншот содержит мякоть.</p>';
+      } else {
+        let html = '<h3>Найдено:</h3>';
+        allItems.forEach(item => {
+          html += `<div class="result-item">
+            <span class="item-name">${item.name}</span>
+            <span class="item-qty">×${item.qty}</span>
+            <span class="item-total">${item.total} r</span>
+          </div>`;
+        });
+        html += `<button class="btn btn-analyze" onclick="saveAllItems(${JSON.stringify(allItems)})">✅ Добавить всё в отчёт</button>`;
+        resultsDiv.innerHTML = html;
+      }
     }
 
-    function createHighlight(clientX, clientY) {
-      if (highlightDiv) highlightDiv.remove();
-      highlightDiv = document.createElement('div');
-      highlightDiv.className = 'highlight';
-      highlightDiv.style.left = `${clientX}px`;
-      highlightDiv.style.top = `${clientY}px`;
-      document.body.appendChild(highlightDiv);
-    }
-
-    function saveSingleItem(item) {
-      purchases.push({
-        name: item.name,
-        price: item.price,
-        quantity: item.quantity,
-        total: item.total,
-        date: new Date().toISOString().split('T')[0],
-        timestamp: new Date().toISOString()
+    function saveAllItems(items) {
+      const today = new Date().toISOString().split('T')[0];
+      items.forEach(item => {
+        history.push({
+          name: item.name,
+          price: prices[item.color],
+          quantity: item.qty,
+          total: item.total,
+          date: today
+        });
       });
-      localStorage.setItem('meatPurchases', JSON.stringify(purchases));
+      localStorage.setItem('meatHistory', JSON.stringify(history));
       renderReport();
-      document.getElementById('analysisResults').innerHTML = '<p>Добавлено в отчёт. Нажмите «Выбрать ещё точку».</p>';
+      document.getElementById('resultsContainer').innerHTML = '<p>Все предметы добавлены в отчёт!</p>';
     }
 
-    function clearResults() {
-      document.getElementById('analysisResults').innerHTML = '<p>Загрузите скриншот и нажмите «Выбрать точку».</p>';
-      if (highlightDiv) highlightDiv.remove();
-      isSelecting = false;
-    }
-
+    // Редактор цен
     function renderPriceEditor() {
-      const container = document.getElementById('priceEditorContainer');
-      let html = '';
-      itemsConfig.forEach(item => {
-        html += `
-          <div class="price-row">
-            <span class="price-label">${item.name}:</span>
-            <input type="number" class="price-input" data-id="${item.id}" value="${item.price}" step="1" min="0">
-          </div>
-        `;
-      });
-      container.innerHTML = html;
+      const div = document.getElementById('priceEditor');
+      div.innerHTML = `
+        <div class="price-row">
+          <span class="price-label">Мякоть куборбуза (красная):</span>
+          <input type="number" class="price-input" id="price-red" value="${prices.red}">
+        </div>
+        <div class="price-row">
+          <span class="price-label">Мякоть сластены (синяя):</span>
+          <input type="number" class="price-input" id="price-blue" value="${prices.blue}">
+        </div>
+        <div class="price-row">
+          <span class="price-label">Мякоть лимонника (жёлтая):</span>
+          <input type="number" class="price-input" id="price-yellow" value="${prices.yellow}">
+        </div>
+        <div class="price-row">
+          <span class="price-label">Мякоть солевика (белая):</span>
+          <input type="number" class="price-input" id="price-white" value="${prices.white}">
+        </div>
+      `;
     }
 
     function savePrices() {
-      const inputs = document.querySelectorAll('.price-input');
-      inputs.forEach(input => {
-        const id = parseInt(input.dataset.id);
-        const price = parseFloat(input.value) || 0;
-        const item = itemsConfig.find(i => i.id === id);
-        if (item) item.price = price;
-      });
-      localStorage.setItem('meatItems', JSON.stringify(itemsConfig));
-      renderPriceEditor();
+      prices = {
+        red: parseFloat(document.getElementById('price-red').value) || 150,
+        blue: parseFloat(document.getElementById('price-blue').value) || 120,
+        yellow: parseFloat(document.getElementById('price-yellow').value) || 80,
+        white: parseFloat(document.getElementById('price-white').value) || 100
+      };
+      localStorage.setItem('meatPrices', JSON.stringify(prices));
       alert("Цены сохранены!");
     }
 
     function renderReport() {
-      const container = document.getElementById('reportsContainer');
-      let spent = 0;
-      let itemsHtml = '';
-      purchases.forEach(p => {
-        spent += p.total;
-        itemsHtml += `<div class="item buy-item">– ${p.name} ×${p.quantity} по ${p.price} = ${p.total} r (${p.date})</div>`;
+      const div = document.getElementById('reportContainer');
+      let totalSum = 0;
+      let html = '';
+      history.forEach(item => {
+        totalSum += item.total;
+        html += `<div class="result-item">– ${item.name} ×${item.quantity} = ${item.total} r (${item.date})</div>`;
       });
-      container.innerHTML = `
-        <div class="period-header">Все покупки</div>
-        <div>${itemsHtml}</div>
-        <div class="summary">Общая сумма: <strong>${spent.toFixed(0)} r</strong></div>
+      div.innerHTML = `
+        <div>${html || '<p>Нет данных</p>'}</div>
+        <div class="summary" style="font-weight:bold; margin-top:10px;">Итого: ${totalSum} r</div>
       `;
     }
 
-    function clearAllData() {
-      if (confirm("Очистить ВСЕ данные?")) {
-        purchases = [];
-        localStorage.removeItem('meatPurchases');
+    function clearAll() {
+      if (confirm("Очистить историю?")) {
+        history = [];
+        localStorage.removeItem('meatHistory');
         renderReport();
       }
     }
 
     // Инициализация
-    // Загружаем сохранённые цены
-    const saved = JSON.parse(localStorage.getItem('meatItems'));
-    if (saved) itemsConfig = saved;
-
+    const savedPrices = JSON.parse(localStorage.getItem('meatPrices'));
+    if (savedPrices) prices = savedPrices;
     renderPriceEditor();
     renderReport();
   </script>
-
 </body>
 </html>
