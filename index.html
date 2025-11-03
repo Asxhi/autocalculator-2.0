@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Умный помощник по скупке мякоти</title>
+  <title>Умный помощник по скупке мякоти (v2)</title>
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -49,6 +49,7 @@
     }
     .btn-analyze { background-color: #1976d2; color: white; }
     .btn-clear { background-color: #ff9800; color: white; }
+    .btn-manual { background-color: #4caf50; color: white; }
 
     .results {
       margin-top: 20px;
@@ -73,6 +74,27 @@
     .item-total {
       font-weight: bold;
       color: #c62828;
+    }
+
+    .manual-mode {
+      margin-top: 20px;
+      padding: 15px;
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+      display: none;
+    }
+    .manual-row {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+    .manual-select {
+      width: 150px;
+    }
+    .manual-qty {
+      width: 80px;
     }
 
     .report-section {
@@ -133,7 +155,7 @@
 </head>
 <body>
 
-  <h1>🤖 Умный помощник по скупке мякоти</h1>
+  <h1>🤖 Умный помощник по скупке мякоти (v2)</h1>
 
   <!-- Загрузка скриншота -->
   <div class="upload-section">
@@ -145,12 +167,25 @@
   <!-- Кнопки управления -->
   <div class="controls">
     <button class="btn btn-analyze" onclick="analyzeImage()">🔍 Анализировать скриншот</button>
+    <button class="btn btn-manual" onclick="toggleManualMode()">➕ Ручной режим</button>
     <button class="btn btn-clear" onclick="clearResults()">Очистить результаты</button>
   </div>
 
   <!-- Результаты анализа -->
   <div class="results" id="analysisResults">
     <p>Загрузите скриншот и нажмите «Анализировать».</p>
+  </div>
+
+  <!-- Ручной режим -->
+  <div class="manual-mode" id="manualMode">
+    <h3>➕ Ручной ввод</h3>
+    <div class="manual-row">
+      <select class="manual-select" id="manualItem">
+        <option value="">— Выбери предмет —</option>
+      </select>
+      <input type="number" class="manual-qty" id="manualQty" min="1" max="50" placeholder="Кол-во">
+      <button class="btn btn-save" onclick="addManualItem()">✅ Добавить</button>
+    </div>
   </div>
 
   <!-- Редактор цен -->
@@ -174,10 +209,10 @@
   <script>
     // База мякоти — цены задаются вручную
     let meatItems = [
-      { id: 1, name: "Мякоть куборбуза", price: 150, color: "red", icon: "https://via.placeholder.com/50/ff0000/ffffff?text=M" },
-      { id: 2, name: "Мякоть сластены", price: 120, color: "blue", icon: "https://via.placeholder.com/50/0000ff/ffffff?text=S" },
-      { id: 3, name: "Мякоть лимонника", price: 80, color: "yellow", icon: "https://via.placeholder.com/50/ffff00/000000?text=L" },
-      { id: 4, name: "Мякоть солевика", price: 100, color: "white", icon: "https://via.placeholder.com/50/f0f0f0/000000?text=V" }
+      { id: 1, name: "Мякоть куборбуза", price: 150, color: [255, 0, 0], icon: "https://via.placeholder.com/50/ff0000/ffffff?text=M" },
+      { id: 2, name: "Мякоть сластены", price: 120, color: [0, 0, 255], icon: "https://via.placeholder.com/50/0000ff/ffffff?text=S" },
+      { id: 3, name: "Мякоть лимонника", price: 80, color: [255, 255, 0], icon: "https://via.placeholder.com/50/ffff00/000000?text=L" },
+      { id: 4, name: "Мякоть солевика", price: 100, color: [240, 240, 240], icon: "https://via.placeholder.com/50/f0f0f0/000000?text=V" }
     ];
 
     // Загрузка данных
@@ -199,6 +234,47 @@
         };
         reader.readAsDataURL(input.files[0]);
       }
+    }
+
+    // Переключение ручного режима
+    function toggleManualMode() {
+      const manualDiv = document.getElementById('manualMode');
+      manualDiv.style.display = manualDiv.style.display === 'none' ? 'block' : 'none';
+
+      // Заполняем выпадающий список
+      const select = document.getElementById('manualItem');
+      select.innerHTML = '<option value="">— Выбери предмет —</option>';
+      meatItems.forEach(item => {
+        select.innerHTML += `<option value="${item.id}">${item.name}</option>`;
+      });
+    }
+
+    // Добавление вручную
+    function addManualItem() {
+      const itemId = parseInt(document.getElementById('manualItem').value);
+      const qty = parseInt(document.getElementById('manualQty').value);
+
+      if (!itemId || qty < 1) {
+        alert("Выберите предмет и укажите количество.");
+        return;
+      }
+
+      const item = meatItems.find(i => i.id === itemId);
+      const total = item.price * qty;
+
+      purchases.push({
+        name: item.name,
+        price: item.price,
+        quantity: qty,
+        total,
+        date: new Date().toISOString().split('T')[0],
+        timestamp: new Date().toISOString()
+      });
+
+      localStorage.setItem('meatPurchases', JSON.stringify(purchases));
+      renderReport();
+      document.getElementById('manualQty').value = '';
+      alert(`Добавлено: ${item.name} ×${qty}`);
     }
 
     // Анализ изображения
@@ -242,19 +318,21 @@
             const pixelData = ctx.getImageData(centerX, centerY, 1, 1).data;
             const [r, g, b] = pixelData;
 
-            // Определяем цвет (упрощённо)
-            let itemType = null;
-            if (r > 200 && g < 100 && b < 100) {
-              itemType = meatItems.find(i => i.color === 'red');
-            } else if (r < 100 && g < 100 && b > 200) {
-              itemType = meatItems.find(i => i.color === 'blue');
-            } else if (r > 200 && g > 200 && b < 100) {
-              itemType = meatItems.find(i => i.color === 'yellow');
-            } else if (r > 200 && g > 200 && b > 200) {
-              itemType = meatItems.find(i => i.color === 'white');
-            }
+            // Определяем цвет по минимальному расстоянию в RGB
+            let closestItem = null;
+            let minDistance = Infinity;
 
-            if (!itemType) continue;
+            meatItems.forEach(item => {
+              const [cr, cg, cb] = item.color;
+              const distance = Math.sqrt((r - cr) ** 2 + (g - cg) ** 2 + (b - cb) ** 2);
+              if (distance < minDistance) {
+                minDistance = distance;
+                closestItem = item;
+              }
+            });
+
+            // Если расстояние меньше порога — считаем, что это наш цвет
+            if (minDistance > 100) continue; // Порог — можно настроить
 
             // Распознаём текст в правом верхнем углу ячейки
             const textX = x + cellWidth - 30;
@@ -268,32 +346,42 @@
             const textCtx = textCanvas.getContext('2d');
             textCtx.drawImage(canvas, textX, textY, textWidth, textHeight, 0, 0, textWidth, textHeight);
 
-            // Преобразуем в чёрно-белое для лучшего OCR
+            // Преобразуем в чёрно-белое с высоким контрастом
             const imageData = textCtx.getImageData(0, 0, textWidth, textHeight);
             for (let i = 0; i < imageData.data.length; i += 4) {
               const avg = (imageData.data[i] + imageData.data[i+1] + imageData.data[i+2]) / 3;
               imageData.data[i] = avg > 128 ? 255 : 0;
               imageData.data[i+1] = avg > 128 ? 255 : 0;
               imageData.data[i+2] = avg > 128 ? 255 : 0;
+              imageData.data[i+3] = 255; // Полная непрозрачность
             }
             textCtx.putImageData(imageData, 0, 0);
 
+            // Увеличиваем изображение для лучшего OCR
+            const scale = 2;
+            const scaledCanvas = document.createElement('canvas');
+            scaledCanvas.width = textWidth * scale;
+            scaledCanvas.height = textHeight * scale;
+            const scaledCtx = scaledCanvas.getContext('2d');
+            scaledCtx.imageSmoothingEnabled = false;
+            scaledCtx.drawImage(textCanvas, 0, 0, textWidth, textHeight, 0, 0, scaledCanvas.width, scaledCanvas.height);
+
             // Распознаём текст
             const textResult = await Tesseract.recognize(
-              textCanvas.toDataURL(),
+              scaledCanvas.toDataURL(),
               'eng',
-              { logger: m => {} }
+              { logger: m => {}, tessedit_char_whitelist: '0123456789xX' }
             );
 
-            const text = textResult.data.text.trim();
+            const text = textResult.data.text.trim().replace(/[^0-9xX]/gi, '');
             const qtyMatch = text.match(/(\d+)x/i);
             const quantity = qtyMatch ? parseInt(qtyMatch[1]) : 1;
 
             if (quantity >= 1 && quantity <= 50) {
-              const total = itemType.price * quantity;
+              const total = closestItem.price * quantity;
               detectedItems.push({
-                name: itemType.name,
-                price: itemType.price,
+                name: closestItem.name,
+                price: closestItem.price,
                 quantity,
                 total,
                 x: Math.round(x),
@@ -305,7 +393,7 @@
 
         // Отображаем результаты
         if (detectedItems.length === 0) {
-          resultsDiv.innerHTML = '<p>Не удалось распознать ни одной мякоти.</p>';
+          resultsDiv.innerHTML = '<p>Не удалось распознать ни одной мякоти. Попробуйте ручной режим.</p>';
         } else {
           let html = '<h3>Распознано:</h3>';
           detectedItems.forEach(item => {
