@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Умный помощник по скупке мякоти (v3)</title>
+  <title>Умный помощник по скупке мякоти (v4)</title>
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -133,15 +133,20 @@
 
     .highlight {
       position: absolute;
-      border: 2px solid yellow;
+      width: 6px;
+      height: 6px;
+      background-color: yellow;
+      border: 1px solid red;
+      border-radius: 50%;
       pointer-events: none;
       z-index: 1000;
+      transform: translate(-50%, -50%);
     }
   </style>
 </head>
 <body>
 
-  <h1>🤖 Умный помощник по скупке мякоти (v3) — Ручной выбор ячеек</h1>
+  <h1>🤖 Умный помощник по скупке мякоти (v4) — Точечный выбор</h1>
 
   <!-- Загрузка скриншота -->
   <div class="upload-section">
@@ -152,13 +157,13 @@
 
   <!-- Кнопки управления -->
   <div class="controls">
-    <button class="btn btn-analyze" onclick="startManualSelection()">🎯 Выбрать ячейку</button>
+    <button class="btn btn-analyze" onclick="startManualSelection()">🎯 Выбрать точку</button>
     <button class="btn btn-clear" onclick="clearResults()">Очистить результаты</button>
   </div>
 
   <!-- Результаты анализа -->
   <div class="results" id="analysisResults">
-    <p>Загрузите скриншот и нажмите «Выбрать ячейку». Затем кликните по ячейке на изображении.</p>
+    <p>Загрузите скриншот и нажмите «Выбрать точку». Затем кликните по иконке мякоти на изображении.</p>
   </div>
 
   <!-- Редактор цен -->
@@ -220,16 +225,7 @@
         return;
       }
       isSelecting = true;
-      document.getElementById('analysisResults').innerHTML = '<p>Кликните по ячейке на изображении.</p>';
-      createHighlight();
-    }
-
-    // Создание выделения
-    function createHighlight() {
-      if (highlightDiv) highlightDiv.remove();
-      highlightDiv = document.createElement('div');
-      highlightDiv.className = 'highlight';
-      document.body.appendChild(highlightDiv);
+      document.getElementById('analysisResults').innerHTML = '<p>Кликните по иконке мякоти на изображении.</p>';
     }
 
     // Обработка клика по изображению
@@ -241,32 +237,17 @@
       const x = event.clientX - rect.left;
       const y = event.clientY - rect.top;
 
-      // Размер ячейки (примерно)
-      const cellWidth = img.width / 5;
-      const cellHeight = img.height / 4;
+      // Создаём выделение
+      createHighlight(event.clientX, event.clientY);
 
-      // Центр ячейки
-      const centerX = Math.floor(x / cellWidth) * cellWidth + cellWidth / 2;
-      const centerY = Math.floor(y / cellHeight) * cellHeight + cellHeight / 2;
-
-      // Правый верхний угол для OCR
-      const textX = Math.floor(x / cellWidth) * cellWidth + cellWidth - 30;
-      const textY = Math.floor(y / cellHeight) * cellHeight + 5;
-
-      // Обновляем выделение
-      highlightDiv.style.left = `${rect.left + Math.floor(x / cellWidth) * cellWidth}px`;
-      highlightDiv.style.top = `${rect.top + Math.floor(y / cellHeight) * cellHeight}px`;
-      highlightDiv.style.width = `${cellWidth}px`;
-      highlightDiv.style.height = `${cellHeight}px`;
-
-      // Получаем цвет в центре
+      // Получаем цвет в точке клика
       const canvas = document.createElement('canvas');
       const ctx = canvas.getContext('2d');
       canvas.width = img.width;
       canvas.height = img.height;
       ctx.drawImage(img, 0, 0);
 
-      const pixelData = ctx.getImageData(centerX, centerY, 1, 1).data;
+      const pixelData = ctx.getImageData(x, y, 1, 1).data;
       const [r, g, b] = pixelData;
 
       // Определяем цвет по минимальному расстоянию
@@ -284,14 +265,24 @@
 
       // Если расстояние слишком большое — не определяем
       if (minDistance > 150) {
-        document.getElementById('analysisResults').innerHTML = '<p>Не удалось определить цвет. Попробуйте другую ячейку.</p>';
+        document.getElementById('analysisResults').innerHTML = `<p>Цвет (${r}, ${g}, ${b}) не распознан. Порог расстояния: 150. Минимальное расстояние: ${minDistance.toFixed(0)}.</p>`;
+        isSelecting = false;
         return;
       }
 
-      // Распознаём текст в правом верхнем углу
+      // Определяем ячейку для OCR (на основе координат клика)
+      const cellWidth = img.width / 5;
+      const cellHeight = img.height / 4;
+      const cellX = Math.floor(x / cellWidth) * cellWidth;
+      const cellY = Math.floor(y / cellHeight) * cellHeight;
+
+      // Правый верхний угол для OCR
+      const textX = cellX + cellWidth - 30;
+      const textY = cellY + 5;
       const textWidth = 30;
       const textHeight = 20;
 
+      // Вырезаем текст для OCR
       const textCanvas = document.createElement('canvas');
       textCanvas.width = textWidth;
       textCanvas.height = textHeight;
@@ -335,8 +326,8 @@
             price: closestItem.price,
             quantity,
             total,
-            x: Math.round(textX),
-            y: Math.round(textY)
+            x: Math.round(x),
+            y: Math.round(y)
           };
 
           // Отображаем результат
@@ -349,17 +340,27 @@
               <span class="item-total">${item.total} r</span>
             </div>
             <button class="btn btn-save" onclick="saveSingleItem(${JSON.stringify(item)})">✅ Добавить в отчёт</button>
-            <button class="btn btn-analyze" onclick="startManualSelection()">🎯 Выбрать ещё ячейку</button>
+            <button class="btn btn-analyze" onclick="startManualSelection()">🎯 Выбрать ещё точку</button>
           `;
           resultsDiv.innerHTML = html;
         } else {
-          document.getElementById('analysisResults').innerHTML = '<p>Не удалось распознать количество. Попробуйте другую ячейку.</p>';
+          document.getElementById('analysisResults').innerHTML = `<p>Не удалось распознать количество. Текст: "${text}".</p>`;
         }
+        isSelecting = false;
       }).catch(error => {
         document.getElementById('analysisResults').innerHTML = `<p style="color:red;">Ошибка OCR: ${error.message}</p>`;
+        isSelecting = false;
       });
+    }
 
-      isSelecting = false;
+    // Создание выделения
+    function createHighlight(clientX, clientY) {
+      if (highlightDiv) highlightDiv.remove();
+      highlightDiv = document.createElement('div');
+      highlightDiv.className = 'highlight';
+      highlightDiv.style.left = `${clientX}px`;
+      highlightDiv.style.top = `${clientY}px`;
+      document.body.appendChild(highlightDiv);
     }
 
     // Сохранение одного предмета
@@ -375,12 +376,12 @@
 
       localStorage.setItem('meatPurchases', JSON.stringify(purchases));
       renderReport();
-      document.getElementById('analysisResults').innerHTML = '<p>Добавлено в отчёт. Нажмите «Выбрать ещё ячейку», чтобы продолжить.</p>';
+      document.getElementById('analysisResults').innerHTML = '<p>Добавлено в отчёт. Нажмите «Выбрать ещё точку», чтобы продолжить.</p>';
     }
 
     // Очистка результатов
     function clearResults() {
-      document.getElementById('analysisResults').innerHTML = '<p>Загрузите скриншот и нажмите «Выбрать ячейку».</p>';
+      document.getElementById('analysisResults').innerHTML = '<p>Загрузите скриншот и нажмите «Выбрать точку».</p>';
       if (highlightDiv) highlightDiv.remove();
       isSelecting = false;
     }
